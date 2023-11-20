@@ -1,0 +1,82 @@
+class OperatingSystem:
+    def __init__(self, os_id, name):
+        self.os_id = os_id
+        self.name = name
+
+class Computer:
+    def __init__(self, computer_id, os_id, model, price):
+        self.computer_id = computer_id
+        self.os_id = os_id
+        self.model = model
+        self.price = price
+
+class ComputersInDepartment:
+    def __init__(self, computer_id, department_id):
+        self.computer_id = computer_id
+        self.department_id = department_id
+
+def get_sorted_computers_by_os(computer_list, os_list):
+    return sorted(computer_list, key=lambda computer: computer.os_id)
+
+def display_computers_with_os(sorted_computers_os, os_list):
+    for computer in sorted_computers_os:
+        os = next((os.name for os in os_list if os.os_id == computer.os_id), None)
+        print(f"Computer: {computer.model}, OS: {os}")
+
+def get_os_prices(computer_list):
+    os_prices = {}
+    for computer in computer_list:
+        os_prices[computer.os_id] = os_prices.get(computer.os_id, 0) + computer.price
+    return os_prices
+
+def display_sorted_os_prices(os_prices, os_list):
+    sorted_os_prices = sorted(os_prices.items(), key=lambda x: x[1], reverse=True)
+    for os_id, total_price in sorted_os_prices:
+        os_name = next((os.name for os in os_list if os.os_id == os_id), None)
+        print(f"OS: {os_name}, Total Price: {total_price}")
+
+def get_matching_os(os_list, keyword):
+    return [os for os in os_list if keyword in os.name]
+
+def get_matching_computers(computer_list, matching_os):
+    return [computer for computer in computer_list if computer.os_id in [os.os_id for os in matching_os]]
+
+def display_matching_os(matching_os):
+    print("Operating Systems containing 'Windows':")
+    for os in matching_os:
+        print(os.name)
+
+def display_matching_computers(matching_computers, os_list):
+    print("Computers with matching OS:")
+    for computer in matching_computers:
+        print(f"Model: {computer.model}, OS: {next((os.name for os in os_list if os.os_id == computer.os_id), None)}")
+
+import unittest
+
+class TestComputerQueries(unittest.TestCase):
+    def test_sorted_computers_by_os(self):
+        # Your test cases here
+        pass
+
+    def test_os_prices(self):
+        # Your test cases here
+        pass
+
+    def test_matching_os(self):
+        # Your test cases here
+        pass
+
+    # Add more test cases for other functions
+
+if __name__ == "__main__":
+    unittest.main()
+вывод: 
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK
+
+
+...Program finished with exit code 0
+Press ENTER to exit console.
