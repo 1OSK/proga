@@ -55,28 +55,66 @@ import unittest
 
 class TestComputerQueries(unittest.TestCase):
     def test_sorted_computers_by_os(self):
-        # Your test cases here
-        pass
+        computer_list = [
+            Computer(1, 2, "Macbook", 1500),
+            Computer(2, 1, "Surface", 1200),
+            Computer(3, 2, "Dell", 1300)
+        ]
+        os_list = [
+            OperatingSystem(1, "Windows"),
+            OperatingSystem(2, "MacOS")
+        ]
+        sorted_computers = get_sorted_computers_by_os(computer_list, os_list)
+        self.assertEqual(sorted_computers[0].model, "Surface")
+        self.assertEqual(sorted_computers[1].model, "Macbook")
+        self.assertEqual(sorted_computers[2].model, "Dell")
 
     def test_os_prices(self):
-        # Your test cases here
-        pass
+        computer_list = [
+            Computer(1, 2, "Macbook", 1500),
+            Computer(2, 1, "Surface", 1200),
+            Computer(3, 2, "Dell", 1300)
+        ]
+        os_prices = get_os_prices(computer_list)
+        self.assertEqual(os_prices[1], 1200)
+        self.assertEqual(os_prices[2], 2800)
+    def test_failed_case(self):
+        self.assertEqual(1, 2)
 
     def test_matching_os(self):
-        # Your test cases here
-        pass
+        os_list = [
+            OperatingSystem(1, "Windows"),
+            OperatingSystem(2, "MacOS"),
+            OperatingSystem(3, "Linux")
+        ]
+        matching_os = get_matching_os(os_list, "Windows")
+        self.assertEqual(len(matching_os), 1)
+        self.assertEqual(matching_os[0].name, "Windows")
 
-    # Add more test cases for other functions
 
 if __name__ == "__main__":
-    unittest.main()
-вывод: 
-...
+    test_suite = unittest.TestLoader().loadTestsFromTestCase(TestComputerQueries)
+    test_result = unittest.TextTestRunner(verbosity=2).run(test_suite)
+
+    successful_tests = test_result.wasSuccessful()
+вывод:
+/Users/ilinkonstantin/PycharmProjects/рк2/venv/bin/python /Users/ilinkonstantin/PycharmProjects/рк2/main.py 
+test_failed_case (__main__.TestComputerQueries) ... FAIL
+test_matching_os (__main__.TestComputerQueries) ... ok
+test_os_prices (__main__.TestComputerQueries) ... ok
+test_sorted_computers_by_os (__main__.TestComputerQueries) ... ok
+
+======================================================================
+FAIL: test_failed_case (__main__.TestComputerQueries)
 ----------------------------------------------------------------------
-Ran 3 tests in 0.000s
+Traceback (most recent call last):
+  File "/Users/ilinkonstantin/PycharmProjects/рк2/main.py", line 82, in test_failed_case
+    self.assertEqual(1, 2)
+AssertionError: 1 != 2
 
-OK
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
 
+FAILED (failures=1)
 
-...Program finished with exit code 0
-Press ENTER to exit console.
+Process finished with exit code 0
