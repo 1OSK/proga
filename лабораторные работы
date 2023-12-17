@@ -1,0 +1,363 @@
+лабораторная работа №1
+----------------------------------------
+
+import sys
+import math
+
+def solve_biquadratic_equation(a, b, c):
+    discriminant = b ** 2 - 4 * a * c
+
+    if discriminant > 0:
+        x1 = (-b + math.sqrt(discriminant)) / (2 * a)
+        x2 = (-b - math.sqrt(discriminant)) / (2 * a)
+        return x1, x2
+    elif discriminant == 0:
+        x = -b / (2 * a)
+        return x,
+    else:
+        return None
+
+def get_coefficients():
+    coefficients = []
+    for coef in ('A', 'B', 'C'):
+        while True:
+            try:
+                val = float(input(f'Введите коэффициент {coef}: '))
+                coefficients.append(val)
+                break
+            except ValueError:
+                print('Некорректный ввод. Повторите попытку.')
+
+    return coefficients
+
+def main():
+    if len(sys.argv) == 4:
+        try:
+            coefficients = [float(arg) for arg in sys.argv[1:]]
+        except ValueError:
+            print('Некорректные параметры командной строки.')
+            coefficients = get_coefficients()
+    else:
+        coefficients = get_coefficients()
+
+    if len(coefficients) != 3:
+        print('Некорректное количество коэффициентов. Попробуйте еще раз.')
+        return
+
+    a, b, c = coefficients
+    roots = solve_biquadratic_equation(a, b, c)
+
+    if roots is None:
+        print('Уравнение не имеет действительных корней.')
+    else:
+        print('Действительные корни уравнения:', *roots)
+
+if __name__ == "__main__":
+    main()
+----------------------------------------
+лабораторная работа №2
+----------------------------------------
+
+def levenshtein_distance(word1, word2):
+    len1, len2 = len(word1), len(word2)
+    dp = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+
+    for i in range(len1 + 1):
+        dp[i][0] = i
+
+    for j in range(len2 + 1):
+        dp[0][j] = j
+
+    for i in range(1, len1 + 1):
+        for j in range(1, len2 + 1):
+            cost = 0 if word1[i - 1] == word2[j - 1] else 1
+            dp[i][j] = min(
+                dp[i - 1][j] + 1,
+                dp[i][j - 1] + 1,
+                dp[i - 1][j - 1] + cost
+            )
+
+    # Вывод матрицы
+    print("Матрица расстояний:")
+    for row in dp:
+        print(row)
+
+    return dp[len1][len2]
+
+# Пример использования:
+word1 = "кот"
+word2 = "скат"
+distance = levenshtein_distance(word1, word2)
+print(f"Расстояние Левенштейна между '{word1}' и '{word2}': {distance}")
+----------------------------------------
+лабораторная работа №3-4
+----------------------------------------
+1)
+# генератор field
+def field(items, *args):
+    assert len(args) > 0
+    for item in items:
+        if len(args) == 1:
+            for arg in args:
+                if arg in item and item[arg] is not None:
+                    yield item[arg]
+        else:
+            new_item = {key: item[key] for key in args if key in item and item[key] is not None}
+            if len(new_item) > 0:
+                yield new_item
+
+# Пример использования
+goods = [
+    {'title': 'Ковер', 'price': 2000, 'color': 'green'},
+    {'title': 'Диван для отдыха', 'color': 'black'}
+]
+
+# Примеры выполнения программы
+print(list(field(goods, 'title')))  # Должен выдавать 'Ковер', 'Диван для отдыха'
+print(list(field(goods, 'title', 'price')))  # Должен выдавать словари с непустыми полями
+2)
+import random
+
+# генератор gen_random
+def gen_random(num_count, begin, end):
+    for _ in range(num_count):
+        yield random.randint(begin, end)
+
+# Пример использования
+result = gen_random(5, 1, 3)
+print(list(result))  # Должен выдавать 5 случайных чисел в диапазоне от 1 до 3
+3)
+# итератор Unique
+class Unique(object):
+    def __init__(self, items, **kwargs):
+        self.seen = set()
+        self.data = iter(items)
+        self.ignore_case = kwargs.get('ignore_case', False)
+
+    def __next__(self):
+        while True:
+            item = next(self.data)
+            if isinstance(item, str) and self.ignore_case:
+                item_key = item.lower()
+            else:
+                item_key = item
+            if item_key not in self.seen:
+                self.seen.add(item_key)
+                return item
+
+    def __iter__(self):
+        return self
+
+# Пример использования
+data1 = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+data2 = ['a', 'A', 'b', 'B', 'a', 'A', 'b', 'B']
+
+# Создание экземпляров итератора Unique
+unique_data1 = Unique(data1)
+unique_data2 = Unique(data2)
+unique_data_ignore_case = Unique(data2, ignore_case=True)
+
+# Примеры выполнения программы
+print(list(unique_data1))  # Должен выдавать только уникальные числа из data1
+print(list(unique_data2))  # Должен выдавать только уникальные строки из data2
+print(list(unique_data_ignore_case))  # Должен выдавать только уникальные строки из data2, игнорируя регистр
+4)
+data = [4, -30, 30, 100, -100, 123, 1, 0, -1, -4]
+
+if __name__ == '__main__':
+    # С использованием lambda-функции
+    result = sorted(data, key=lambda x: abs(x), reverse=True)
+    print(result)
+
+    # Без использования lambda-функции
+    result_without_lambda = sorted(data, key=abs, reverse=True)
+    print(result_without_lambda)
+5)
+# Реализация декоратора print_result
+def print_result(func):
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        print(func.__name__)
+        if isinstance(result, list):
+            print('\n'.join(map(str, result)))
+        elif isinstance(result, dict):
+            print('\n'.join(f"{key} = {value}" for key, value in result.items()))
+        else:
+            print(result)
+        return result
+    return wrapper
+
+# Пример использования декоратора
+@print_result
+def test_1():
+    return 1
+
+@print_result
+def test_2():
+    return 'iu5'
+
+@print_result
+def test_3():
+    return {'a': 1, 'b': 2}
+
+@print_result
+def test_4():
+    return [1, 2]
+
+if __name__ == '__main__':
+    print('!!!!!!!!')
+    test_1()
+    test_2()
+    test_3()
+    test_4()
+6)
+mport time
+from contextlib import contextmanager
+
+# Классический контекстный менеджер на основе класса
+class cm_timer_1:
+    def __enter__(self):
+        self.start_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        print(f"time: {time.time() - self.start_time}")
+
+# Контекстный менеджер с использованием contextlib
+@contextmanager
+def cm_timer_2():
+    start_time = time.time()
+    yield
+    print(f"time: {time.time() - start_time}")
+
+# Примеры использования
+from time import sleep
+
+with cm_timer_1():
+    sleep(5.5)
+
+with cm_timer_2():
+    sleep(5.5)
+7)
+import json
+from cm_timer import cm_timer_1
+from print_result import print_result
+
+# Путь к файлу, переданный при запуске скрипта
+path = sys.argv[1]
+
+# Чтение данных из файла JSON
+with open(path) as f:
+    data = json.load(f)
+
+# Функция f1: сортировка и удаление дубликатов, игнорируя регистр
+@print_result
+def f1(arg):
+    return sorted(set(map(str.lower, arg)), key=str.lower)
+
+# Функция f2: фильтрация элементов, начинающихся со слова "программист"
+@print_result
+def f2(arg):
+    return list(filter(lambda x: x.startswith('программист'), arg))
+
+# Функция f3: модификация каждого элемента, добавление строки "с опытом Python"
+@print_result
+def f3(arg):
+    return list(map(lambda x: f"{x}, с опытом Python", arg))
+
+# Функция f4: генерация зарплаты и присоединение к названию специальности
+@print_result
+def f4(arg):
+    salaries = [str(random.randint(100000, 200000)) + ' руб.' for _ in range(len(arg))]
+    return list(map(lambda x, y: f"{x}, зарплата {y}", arg, salaries))
+
+if __name__ == '__main__':
+    with cm_timer_1():
+        f4(f3(f2(f1(data))))
+----------------------------------------
+лабораторная работа №5
+----------------------------------------
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+
+# Функция, которая запускается при вызове команды /start
+def start(update: Update, context: CallbackContext) -> None:
+    keyboard = [
+        [
+            InlineKeyboardButton("Кнопка 1", callback_data='button1'),
+            InlineKeyboardButton("Кнопка 2", callback_data='button2'),
+        ],
+        [InlineKeyboardButton("Кнопка 3", callback_data='button3')],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text('Выберите опцию:', reply_markup=reply_markup)
+
+# Функция для обработки нажатий на кнопки
+def button_click(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    query.answer()
+
+    query.edit_message_text(f"Вы нажали на кнопку: {query.data}")
+
+def main() -> None:
+    updater = Updater("YOUR_BOT_TOKEN")
+    dispatcher = updater.dispatcher
+
+    # Обработчики команд
+    dispatcher.add_handler(CommandHandler("start", start))
+
+    # Обработчик нажатий на кнопки
+    dispatcher.add_handler(CallbackQueryHandler(button_click))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
+----------------------------------------
+лабораторная работа №6
+----------------------------------------
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+
+# Структура состояний бота
+states = {
+    "START": 0,
+    "TEXT_INPUT": 1,
+    "STOP": 2
+}
+current_state = states["START"]  # Начальное состояние
+
+# Обработчики команд
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Привет! Ожидаю текстовое сообщение.')
+
+def stop(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Пока!')
+    global current_state
+    current_state = states["STOP"]
+
+# Обработчик текстовых сообщений
+def text_input(update: Update, context: CallbackContext) -> None:
+    text = update.message.text
+    update.message.reply_text(f'Вы ввели: {text}')
+
+# Основная функция бота
+def main() -> None:
+    updater = Updater("YOUR_BOT_TOKEN")
+    dispatcher = updater.dispatcher
+
+    # Обработчики команд
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("stop", stop))
+
+    # Обработчик текстовых сообщений
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, text_input))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
+----------------------------------------
