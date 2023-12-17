@@ -1,0 +1,624 @@
+import random
+import json
+import re
+from telegram import Update
+from telegram.ext import CallbackContext, Updater, CommandHandler, MessageHandler, Filters
+from telegram import ReplyKeyboardMarkup
+import logging
+
+# Настройка логгирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class Quote:
+    def __init__(self, text, author, likes=0, dislikes=0):
+        self.text = text  # Текст цитаты
+        self.likes = likes  # Количество лайков
+        self.dislikes = dislikes  # Количество дизлайков
+
+    def to_dict(self):
+        return {
+            "text": self.text,  # Преобразует цитату в словарь
+            "likes": self.likes,
+            "dislikes": self.dislikes
+        }
+
+    def increase_likes(self):
+        self.likes += 1  # Увеличивает количество лайков на 1
+
+    def decrease_likes(self):
+        if self.likes > 0:
+            self.likes -= 1  # Уменьшает количество лайков на 1, если оно больше нуля
+
+    def increase_dislikes(self):
+        self.dislikes += 1  # Увеличивает количество дизлайков на 1
+
+    def decrease_dislikes(self):
+        if self.dislikes > 0:
+            self.dislikes -= 1  # Уменьшает количество дизлайков на 1, если оно больше нуля
+
+
+
+
+class QuoteGenerator:
+
+    #Инициализация генератора цитат с категориями и текущими индексами.
+    def __init__(self):
+        self.categories = {}
+        self.current_index = {}
+
+    # Загрузка существующих данных из файла JSON.
+    def load_existing_data(self, file_name):
+        try:
+            with open(file_name, 'r', encoding='utf-8') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            logging.error(f"Файл '{file_name}' не найден при чтении.")
+        except json.JSONDecodeError as e:
+            logging.error(f"Ошибка при чтении файла '{file_name}': {e}")
+        except Exception as e:
+            logging.error(f"Неизвестная ошибка при чтении файла '{file_name}': {e}")
+        return {}
+
+    # Сохранение данных в файл JSON.
+    def save_data_to_file(self, file_name, data):
+        try:
+            with open(file_name, 'w', encoding='utf-8') as file:
+                json.dump(data, file, ensure_ascii=False, indent=4)
+        except IOError as e:
+            logging.error(f"Ошибка ввода-вывода при записи в файл '{file_name}': {e}")
+        except Exception as e:
+            logging.error(f"Неизвестная ошибка при записи в файл '{file_name}': {e}")
+
+    #Удаление цитаты или категории из файла JSON.
+    def remove_from_file(self, file_name, to_remove, is_category=False):
+        existing_data = self.load_existing_data(file_name)
+        try:
+            if is_category:
+                if to_remove in self.categories:
+                    del self.categories[to_remove]
+                else:
+                    raise ValueError(f"Категория '{to_remove}' не найдена при удалении.")
+            else:
+                found = False
+                for category, quotes in self.categories.items():
+                    self.categories[category] = [quote for quote in quotes if quote.text != to_remove]
+                    if not found and any(quote.text == to_remove for quote in quotes):
+                        found = True
+                if not found:
+                    raise ValueError(f"Цитата '{to_remove}' не найдена при удалении.")
+
+            for key, quotes in self.categories.items():
+                existing_data.setdefault(key, []).extend([quote.to_dict() for quote in quotes])
+
+            self.save_data_to_file(file_name, existing_data)
+
+            # После удаления категории или цитаты, перезагрузите категории
+            self.load_quotes(file_name)
+
+            return True
+        except ValueError as ve:
+            logging.error(f"Ошибка значения: {ve}")
+            return False
+        except Exception as e:
+            logging.error(f"Произошла ошибка при удалении: {e}")
+            return False
+
+    #Получение случайной цитаты из определенной категории.
+    def get_random_quote_by_category(self, category=None):
+        if category:
+            category = category.lower()
+            if category in self.categories and self.categories[category]:
+                if category not in self.current_index:
+                    self.current_index[category] = 0
+
+                index = self.current_index[category]
+                quote = self.categories[category][index]
+                self.current_index[category] = (index + 1) % len(self.categories[category])
+                return quote
+            else:
+                return None
+        else:
+            all_quotes = [quote for quotes in self.categories.values() for quote in quotes]
+            if all_quotes:
+                if not self.current_index:
+                    self.current_index = {category: 0 for category in self.categories}
+
+                category = next(iter(self.current_index))
+                index = self.current_index[category]
+                quote = self.categories[category][index]
+                self.current_index[category] = (index + 1) % len(self.categories[category])
+                return quote
+            else:
+                return None
+    #Увеличение количества лайков для указанной цитаты в указанной категории.
+    def like_quote(self, category, quote_index):
+        if category in self.categories and quote_index < len(self.categories[category]):
+            quote = self.categories[category][quote_index]
+            quote.increase_likes()
+            self.save_quotes('quotes.json')
+            return True
+        return False
+
+
+
+    #Увеличение количества дизлайков для указанной цитаты в указанной категории.
+    def dislike_quote(self, category, quote_index):
+        if category in self.categories and quote_index < len(self.categories[category]):
+            quote = self.categories[category][quote_index]
+            quote.increase_dislikes()
+            self.save_quotes('quotes.json')
+            return True
+        return False
+    #Сохранение всех цитат в файл JSON.
+    def save_quotes(self, file_name):
+        existing_data = {}
+        try:
+            with open(file_name, 'r', encoding='utf-8') as file:
+                existing_data = json.load(file)
+        except FileNotFoundError:
+            logger.error(f"Файл '{file_name}' не найден при чтении.")
+        except json.JSONDecodeError as e:
+            logger.error(f"Ошибка при чтении файла '{file_name}': {e}")
+        except Exception as e:
+            logger.error(f"Неизвестная ошибка при чтении файла '{file_name}': {e}")
+
+        updated_data = {}  # Создаем новый словарь для обновленных данных
+
+        # Обновление данных о лайках и дислайках перед сохранением
+        for key, quotes in self.categories.items():
+            updated_quotes = []
+            for quote in quotes:
+                existing_quote = next((q for q in existing_data.get(key, []) if q['text'] == quote.text), None)
+                if existing_quote:
+                    # Найденная цитата в существующих данных - обновим ее лайки и дислайки
+                    existing_quote['likes'] = quote.likes
+                    existing_quote['dislikes'] = quote.dislikes
+                    updated_quotes.append(existing_quote)
+                else:
+                    # Цитата не найдена - добавим ее в обновленные данные
+                    updated_quotes.append(quote.to_dict())
+            updated_data[key] = updated_quotes
+
+        try:
+            with open(file_name, 'w', encoding='utf-8') as file:
+                json.dump(updated_data, file, ensure_ascii=False, indent=4)
+        except IOError as e:
+            logger.error(f"Ошибка ввода-вывода при записи в файл '{file_name}': {e}")
+        except Exception as e:
+            logger.error(f"Неизвестная ошибка при записи в файл '{file_name}': {e}")
+
+    #Сохранение всех цитат в файл JSON.
+    def add_quote(self, quote_type, new_quote):
+        if quote_type and new_quote:
+            quote_type = quote_type.strip().lower()
+            new_quote = new_quote.strip()
+
+            # Проверяем наличие цитаты в категории
+            if any(quote.text == new_quote for quote in self.categories.get(quote_type, [])):
+                logger.info("Цитата уже существует в данной категории.")
+                return  # Цитата уже существует, не добавляем её повторно
+
+            # Добавление цитаты в категорию
+            if quote_type in self.categories:
+                self.categories[quote_type].append(Quote(new_quote, quote_type))
+            else:
+                logger.info(f"Цитата не попадает в существующую категорию.")
+                response = input(f"Цитата '{new_quote}' не попадает в существующую категорию '{quote_type}'. "
+                                 "Что с ней делать? (Создать новую категорию / Проигнорировать / Другое) ")
+                # Здесь вы можете обработать ответ пользователя
+                # Например, создать новую категорию или проигнорировать цитату
+                if response.lower() == "создать новую категорию":
+                    self.categories[quote_type] = [Quote(new_quote, quote_type)]
+                elif response.lower() == "проигнорировать":
+                    pass  # Ничего не делаем с цитатой
+                else:
+                    # Другие действия с цитатой, например, добавление в "unknown" или другую обработку
+                    pass
+
+            # Сохранение цитат после добавления
+            self.save_quotes('quotes.json')
+        else:
+            logger.error("Используйте формат /addquote НАЗВАНИЕ_КАТЕГОРИИ: ТЕКСТ_ЦИТАТЫ")
+
+    #Получение цитаты из указанной категории.
+    def get_quotes_by_category(self, category):
+        category = category.lower()
+        if category in self.categories and self.categories[category]:
+            if category not in self.current_index:
+                self.current_index[category] = 0
+
+            index = self.current_index[category]
+            if index < len(self.categories[category]):
+                quote = self.categories[category][index].text
+                self.current_index[category] = (index + 1) % len(self.categories[category])
+                return quote
+            else:
+                error_message = "Достигнут конец списка цитат для данной категории."
+                logging.error(error_message)
+                return error_message
+        else:
+            error_message = f"Цитаты для категории '{category}' не найдены."
+            logging.error(error_message)
+            return error_message
+
+    #Загрузка цитат из файла JSON.
+    def load_quotes(self, file_name):
+        try:
+            with open(file_name, 'r', encoding='utf-8') as file:
+                quotes_data = json.load(file)
+        except FileNotFoundError:
+            quotes_data = {}
+            logging.error(f"Файл '{file_name}' не найден при чтении.")
+        except json.JSONDecodeError as e:
+            quotes_data = {}
+            logging.error(f"Ошибка при чтении файла '{file_name}': {e}")
+        except Exception as e:
+            quotes_data = {}
+            logging.error(f"Неизвестная ошибка при чтении файла '{file_name}': {e}")
+        else:
+            for category, quotes in quotes_data.items():
+                self.categories[category] = []
+                for quote in quotes:
+                    # Добавьте проверку наличия ключа 'author' в цитате
+                    author = quote.get('author', None)
+                    # Используйте get() для безопасного получения значения по ключу
+                    # Если 'author' отсутствует, установите значение по умолчанию (None или что-то другое)
+                    self.categories[category].append(Quote(
+                        quote['text'], author, quote['likes'], quote['dislikes']
+                    ))
+    # удаление поторяющихся цитат
+    def remove_duplicate_quotes(self, file_name):
+        # Загрузка цитат из файла
+        self.load_quotes(file_name)
+
+        # Проход по каждой категории
+        for category, quotes in self.categories.items():
+            existing_quotes = set()
+            unique_quotes = []
+
+            # Проверка на уникальность цитат в категории
+            for quote in quotes:
+                if quote.text not in existing_quotes:
+                    existing_quotes.add(quote.text)
+                    unique_quotes.append(quote)
+                else:
+                    # Логирование повторяющейся цитаты
+                    print(f"Найдена повторяющаяся цитата в категории '{category}': '{quote.text}'")
+
+            # Замена цитат в категории уникальными цитатами
+            self.categories[category] = unique_quotes
+
+        # Сохранение обновленных данных в файл
+        self.save_quotes(file_name)
+        print("Проверка сохранения изменений после удаления повторяющихся цитат:")
+        print(self.categories)  # Вывод данных для проверки 
+
+    #Получение случайной цитаты из категории, указанной в сообщении пользователя.
+    def get_quote_by_category(update, context):
+        from random import choice
+
+        category = context.args[0].lower() if context.args else None
+        quotes_in_category = quote_generator.categories.get(category)
+
+        if quotes_in_category:
+            random_quote = choice(quotes_in_category).text
+            context.chat_data["last_quote"] = random_quote
+            update.message.reply_text(f"Случайная цитата из категории '{category}': {random_quote}")
+            update.message.reply_text("Поставьте лайк этой цитате, используя команду /like.")
+            update.message.reply_text("Поставьте дизлайк этой цитате, используя команду /dislike.")
+        else:
+            update.message.reply_text(f"Отсутствуют цитаты для категории '{category}'.")
+
+    #Сброс количества лайков и дизлайков для всех цитат.
+    def reset_likes_and_dislikes(self):
+        for category in self.categories.values():
+            for quote in category:
+                quote.likes = 0
+                quote.dislikes = 0
+        self.save_quotes('quotes.json')
+
+
+    #Получение случайной цитаты из всех доступных цитат.
+    def get_random_quote(self):
+        all_quotes = [quote for quotes in self.categories.values() for quote in quotes]
+        if all_quotes:
+            random_quote = random.choice(all_quotes)
+            return random_quote.text
+        else:
+            return "Нет доступных цитат."
+
+quote_generator = QuoteGenerator() #создает экземпляр класса
+quote_generator.reset_likes_and_dislikes() #выполняет сброс количества лайков и дизлайков для всех цитат, хранящихся в системе.
+quote_generator.remove_duplicate_quotes('quotes.json')
+
+
+# Функции добавления и получения цитат:
+def add_quote(update: Update, context: CallbackContext) -> None:
+    try:
+        user_input = None
+        if update.message and update.message.text:
+            user_input = update.message.text.split(' ', 1)
+
+        if user_input is not None and len(user_input) == 2:
+            if ':' in user_input[1]:
+                quote_type, new_quote = user_input[1].split(':', 1)
+                quote_type = quote_type.strip().lower()
+                new_quote = new_quote.strip()
+
+                if not quote_type or not new_quote:
+                    raise ValueError("Необходимо указать и категорию, и цитату.")
+
+                if quote_type in quote_generator.categories:
+                    quote_generator.add_quote(quote_type, new_quote)
+                    quote_generator.save_quotes('quotes.json')
+                    update.message.reply_text(f"Цитата успешно добавлена в категорию '{quote_type}'.")
+                else:
+                    quote_generator.categories[quote_type] = [Quote(new_quote, 'unknown')]
+                    quote_generator.save_quotes('quotes.json')
+                    update.message.reply_text(f"Категория '{quote_type}' создана, цитата успешно добавлена.")
+            else:
+                update.message.reply_text("Используйте формат /addquote НАЗВАНИЕ_КАТЕГОРИИ: ТЕКСТ_ЦИТАТЫ")
+        else:
+            update.message.reply_text("Используйте формат /addquote НАЗВАНИЕ_КАТЕГОРИИ: ТЕКСТ_ЦИТАТЫ")
+
+    except ValueError as ve:
+        logger.error(f"Ошибка значения: {ve}")
+        update.message.reply_text(str(ve))
+    except Exception as e:
+        logger.error(f"Произошла ошибка: {e}")
+        update.message.reply_text("Произошла ошибка при добавлении цитаты. Пожалуйста, попробуйте еще раз.")
+def get_quote(update: Update, context: CallbackContext):
+    category = context.args[0].lower() if context.args else None
+    category_text = f"из категории '{category}'" if category else "без категории"
+
+    random_quote = quote_generator.get_random_quote_by_category(category)
+    if random_quote:
+        context.user_data["last_quote"] = random_quote.text
+        update.message.reply_text(f"Цитата {category_text}: {random_quote.text}\n\n"
+                                  "Поставьте лайк этой цитате, используя команду /like.\n"
+                                  "Поставьте дизлайк этой цитате, используя команду /dislike.")
+    else:
+        update.message.reply_text("Отсутствуют цитаты для вывода.")
+
+# Функции работы с категориями и списком категорий:
+def category_list(update, context):
+    categories = [f"{category}" for category in quote_generator.categories]
+    categories_text = "\n".join(categories)
+    update.message.reply_text(f"Доступные категории:\n{categories_text}")
+def delete_category_command(update: Update, context: CallbackContext):
+    if not context.args:
+        update.message.reply_text("Укажите категорию для удаления.")
+        return
+
+    to_remove = context.args[0].lower()
+    if to_remove in quote_generator.categories:
+        del quote_generator.categories[to_remove]
+        quote_generator.save_quotes('quotes.json')
+        update.message.reply_text(f"Категория '{to_remove}' успешно удалена.")
+    else:
+        update.message.reply_text(f"Категория '{to_remove}' не найдена.")
+
+
+# Функции сохранения данных:
+
+def save_quotes_to_file(file_name, categories):
+
+    serialized_categories = {
+        key: [quote.to_dict() for quote in quotes] for key, quotes in categories.items()
+    }
+
+
+    with open(file_name, 'w', encoding='utf-8') as file:
+        json.dump(serialized_categories, file, ensure_ascii=False, indent=4)
+
+
+
+# Функции работы с лайками и дизлайками:
+def like(update: Update, context: CallbackContext):
+    update_quote_status(update, context, "лайк")
+
+def dislike(update: Update, context: CallbackContext):
+    update_quote_status(update, context, "дизлайк")
+
+def update_quote_status(update: Update, context: CallbackContext, action: str):
+    try:
+        text = update.message.text
+        last_quote = context.user_data.get("last_quote")
+
+        print(f"Полученный текст: {text}")
+        print(f"Последняя цитата: {last_quote}")
+
+        if text not in ["/like", "/dislike"]:
+            update.message.reply_text("Пожалуйста, используйте /like или /dislike для оценки цитаты.")
+            return
+
+        if not last_quote:
+            update.message.reply_text("Кажется, вы еще не получили цитату. Используйте /getquote [категория] сначала.")
+            return
+
+        found_quote = None
+        for category_quotes in quote_generator.categories.values():
+            for quote in category_quotes:
+                if quote.text.lower() == last_quote.lower():
+                    found_quote = quote
+                    break
+            if found_quote:
+                break
+
+        if not found_quote:
+            update.message.reply_text("Цитата не найдена.")
+            return
+
+        if text == "/like":
+            found_quote.increase_likes()
+            print(f"Лайк для цитаты '{last_quote}' увеличен.")
+        else:
+            found_quote.increase_dislikes()
+            print(f"Дизлайк для цитаты '{last_quote}' увеличен.")
+
+        quote_generator.save_quotes('quotes.json')
+        update.message.reply_text(f"Цитата '{last_quote}' {action}нута.")
+
+    except Exception as e:
+        logger.error(f"Произошла ошибка: {e}")
+        update.message.reply_text("Произошла ошибка при обновлении статуса цитаты.")
+
+# Функции удаления цитат:
+
+def delete_quote(update: Update, context: CallbackContext):
+    if not context.args:
+        update.message.reply_text("Укажите текст цитаты для удаления.")
+        return
+
+    to_remove = ' '.join(context.args)
+    remove_quote_or_category(update, context, to_remove)
+
+def confirm_deletion(update, context, to_remove):
+    keyboard = [['Да', 'Нет']]
+    context.user_data['delete_quote'] = to_remove  # Сохраняем цитату для удаления в данных пользователя
+    update.message.reply_text(
+        "Вы уверены, что хотите удалить цитату?",
+        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True),
+    )
+
+def remove_quote_or_category(update: Update, context: CallbackContext, to_remove: str, is_category: bool = False):
+    if not to_remove:
+        update.message.reply_text(f"Укажите {'категорию' if is_category else 'текст цитаты'} для удаления.")
+        return
+
+    removed = False  # Флаг для отслеживания удаления
+
+    # Удаляем категорию
+    if is_category:
+        if to_remove.lower() in quote_generator.categories:
+            del quote_generator.categories[to_remove.lower()]
+            quote_generator.save_quotes('quotes.json')
+            update.message.reply_text(f"Категория '{to_remove}' успешно удалена.")
+        else:
+            update.message.reply_text(f"Категория '{to_remove}' не найдена.")
+    else:
+        # Удаляем цитату из категорий
+        removed = False
+        for category, quotes in quote_generator.categories.items():
+            updated_quotes = quotes.copy()  # Создаем копию списка цитат
+
+            updated_quotes = [quote for quote in updated_quotes if quote.text.lower() != to_remove.lower()]
+
+            if len(updated_quotes) < len(quotes):
+                removed = True
+                quote_generator.categories[category] = updated_quotes
+                quote_texts = [quote.text for quote in updated_quotes]
+                print(f"Категория: {category}, Цитаты: {quote_texts}")
+
+        if not removed:
+            update.message.reply_text(f"Цитата '{to_remove}' не найдена в категориях.")
+        else:
+            quote_generator.save_quotes('quotes.json')
+            update.message.reply_text(f"Цитата '{to_remove}' успешно удалена из категорий.")
+
+    # Применение функции
+    remove_quote_or_category(update, context, 'текст_цитаты_для_удаления')
+
+
+# Функции анализа цитат:
+def analyze_quotes(update, context):
+    try:
+        all_quotes = [quote for quotes in quote_generator.categories.values() for quote in quotes]
+        sorted_quotes = sorted(all_quotes, key=lambda x: x.likes / max(1, x.dislikes), reverse=True)
+
+        top_5_quotes = sorted_quotes[:5]
+        message = "Топ 5 цитат:\n"
+        for index, quote in enumerate(top_5_quotes, start=1):
+            message += f"{index}. '{quote.text}' - Лайков: {quote.likes}, Дизлайков: {quote.dislikes}\n"
+
+        update.message.reply_text(message)
+
+    except Exception as e:
+        logger.error(f"Произошла ошибка: {e}")
+        update.message.reply_text("Произошла ошибка при анализе цитат.")
+
+
+
+# Функции управления командами:
+def start(update: Update, context: CallbackContext) -> None:
+    existing_commands = ["/start", "/addquote", "/deletequote", "/deletecategory", "/category", "/resetlikes", "/analyze"]
+    all_commands_text = '\n'.join(existing_commands)
+    update.message.reply_text(f"Привет! Чтобы получить цитату, используйте команды:\n{all_commands_text}")
+def sanitize_command_name(command):
+    return ''.join(c.lower() for c in command if c.isalnum())
+
+def is_valid_command(command):
+    return bool(re.match(r'^[A-Za-z0-9_]+$', command))
+
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import CallbackContext
+def reset_likes_and_dislikes(update: Update, context: CallbackContext):
+    try:
+        if not context.bot.get_chat_member(update.message.chat_id, update.message.from_user.id).can_promote_members:
+            update.message.reply_text("У вас нет прав для выполнения этой операции.")
+            return
+
+        quote_generator.reset_likes_and_dislikes()
+        quote_generator.save_quotes('quotes.json')
+
+        update.message.reply_text("Лайки и дизлайки для всех цитат были обнулены.")
+
+    except Exception as e:
+        logger.error(f"Произошла ошибка: {e}")
+        update.message.reply_text("Произошла ошибка при сбросе лайков и дизлайков.")
+
+
+
+
+
+
+
+
+
+
+def main() -> None:
+    updater = Updater("6819977499:AAEQyhjz4sYhJhasJLhyVk3II-LEzDs5fQQ")
+    dp = updater.dispatcher
+
+    # Обработчики команд
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("addquote", add_quote))
+    dp.add_handler(CommandHandler("getquote", get_quote))
+    dp.add_handler(CommandHandler("category", category_list))
+    dp.add_handler(CommandHandler("deletecategory", delete_category_command))
+    dp.add_handler(CommandHandler("resetlikes", reset_likes_and_dislikes))
+    dp.add_handler(CommandHandler("analyze", analyze_quotes))
+    dp.add_handler(CommandHandler("deletequote", delete_quote))
+    dp.add_handler(CommandHandler("like", like))
+    dp.add_handler(CommandHandler("dislike", dislike))
+
+
+
+    quote_generator.remove_duplicate_quotes('quotes.json')  # Удаление повторяющихся цитат
+    quote_generator.load_quotes('quotes.json')  # Загрузка цитат из файла
+
+    updater.start_polling()
+    updater.idle()
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+-------------------
+пример файла:
+
+{
+    "marchenko": [
+        {
+            "text": "\"Теорема, Критерий Сильвестра. И Сильвестр - это не Сталлоне! А то многие спрашивают\"",
+            "likes": 0,
+            "dislikes": 0
+        }
+    ]
+}
